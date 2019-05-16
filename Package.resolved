@@ -1,0 +1,25 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "BlockchainSwift",
+        "repositoryURL": "https://github.com/nevstad/blockchain-swift.git",
+        "state": {
+          "branch": "feature/nio",
+          "revision": "26406a59cd5621b034808f92d9ac341f219758f5",
+          "version": null
+        }
+      },
+      {
+        "package": "swift-nio",
+        "repositoryURL": "https://github.com/apple/swift-nio.git",
+        "state": {
+          "branch": null,
+          "revision": "b2be49ada3d2cf3824e038505be32230d6e62893",
+          "version": "2.1.1"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
