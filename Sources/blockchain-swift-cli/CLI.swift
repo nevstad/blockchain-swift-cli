@@ -50,6 +50,7 @@ class CLI {
     
     enum WalletSubCommand: String, CaseIterable {
         case create
+        case delete
         case list
         case balance
         case send
@@ -58,6 +59,8 @@ class CLI {
             switch self {
             case .create:
                 return "\(rawValue.underline) [wallet name] <--keychain|-kc>"
+            case .delete:
+                return "\(rawValue.underline) [wallet name]"
             case .list:
                 return "\(rawValue.underline)"
             case .balance:
@@ -71,6 +74,8 @@ class CLI {
             switch self {
             case .create:
                 return "- Create a wallet, optionally stored in keychain."
+            case .delete:
+                return "- Delete a wallet from the keychain."
             case .list:
                 return "- List all wallets stored in keychain."
             case .balance:
@@ -176,6 +181,11 @@ class CLI {
                     if interactive { prompt("Enter wallet name: ".dim) }
                     let name = interactive ? getInput() : args[2]
                     createWallet(named: name, keychain: flags.contains(.keychain) || flags.contains(.keychainLong))
+                case .delete:
+                    let interactive = args.count < 3
+                    if interactive { prompt("Enter wallet name: ".dim) }
+                    let name = interactive ? getInput() : args[2]
+                    deleteWallet(named: name)
                 case .list:
                     listWallets()
                 case .balance:
@@ -248,7 +258,7 @@ class CLI {
     
     func printCommand(_ command: Command) {
         for usage in command.usage {
-            print("    \(String.prompt) \(usage.underline)")
+            print("    \(String.prompt) \(usage)")
         }
     }
     
@@ -277,14 +287,23 @@ class CLI {
     
     func createWallet(named: String, keychain: Bool = false) {
         if let wallet = Wallet(name: named, storeInKeychain: keychain) {
-            print("💳 Created wallet '\(named)'\(keychain ? " (stored in keychain)" : "")")
-            print("  🔑 Public: \(wallet.publicKey.hex)")
-            print("  🔐 Private: \(wallet.exportPrivateKey()!.hex)")
-            print("  📥 Address: \(wallet.address.hex)")
+            print("💳 Created wallet '\(named)'\(keychain ? " (stored in keychain)".dim : "")")
+            print("  🔑 Public: \(wallet.publicKey.hex)".dim)
+            print("  🔐 Private: \(wallet.exportPrivateKey()!.hex)".dim)
+            print("  📥 Address: \(wallet.address.hex)".dim)
         } else {
             printError("Could not create wallet!")
         }
     }
+    
+    func deleteWallet(named name: String) {
+        if Keygen.clearKeychainKeys(name: name) {
+            print("💳 '\(name)' successfully deleted")
+        } else {
+            printError("Unable to delete wallet '\(name)'")
+        }
+    }
+
     
     func listWallets() {
         printError("Unsupported")
