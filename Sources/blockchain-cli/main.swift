@@ -6,7 +6,7 @@ func prompt(_ prompt: String) {
     fflush(stdout)
 }
 
-func error(_ error: String) {
+func printError(_ error: String) {
     print("Error: ".red() + error)
 }
 
@@ -25,6 +25,10 @@ extension String {
     
     func red() -> String {
         return "\u{001B}[31m\(self)\u{001B}[0m"
+    }
+    
+    func blue() -> String {
+        return "\u{001B}[34m\(self)\u{001B}[0m"
     }
     func dim() -> String {
         return "\u{001B}[2m\(self)\u{001B}[22m"
@@ -47,7 +51,6 @@ class CLI {
     enum Command: String, CaseIterable {
         case wallet
         case mine
-        case central
         case help
         case exit
         
@@ -57,8 +60,6 @@ class CLI {
                 return WalletSubCommand.allCases.map { "\(rawValue.bold()) \($0.usage) \($0.info.dim())" }
             case .mine:
                 return ["\(rawValue.bold()) [wallet address] \(info.dim())"]
-            case .central:
-                return ["\(rawValue.bold()) <wallet address> \(info.dim())"]
             default:
                 return [rawValue.bold()]
             }
@@ -70,8 +71,6 @@ class CLI {
                 return "- Create or list wallets stored in keychain."
             case .mine:
                 return "- Start minig blocks. Requires a wallet address, for block rewards."
-            case .central:
-                return "- Run a central node."
             default:
                 return ""
             }
@@ -91,7 +90,7 @@ class CLI {
             case .list:
                 return "\(rawValue.underline())"
             case .balance:
-                return "\(rawValue.underline()) [address]"
+                return "\(rawValue.underline()) [wallet address]"
             case .send:
                 return "\(rawValue.underline()) [wallet name] [to address] [value]"
             }
@@ -115,21 +114,80 @@ class CLI {
     enum Flag: String {
         case keychain = "-kc"
         case keychainLong = "--keychain"
+        case central = "--central"
     }
 
-    static func getInput() -> String {
+    let node: Node
+    
+    init(type: Node.NodeType) {
+        print("🏃🏻‍♂️ Running Node! (\(type.rawValue))")
+        let state = Node.loadState()
+        if let bc = state.blockchain {
+            print("⛓  Blockchain: \(bc.blocks.count) blocks, latest hash: \(bc.lastBlockHash().hex)")
+        }
+        if let mp = state.mempool {
+            print("🚰 Mempool: \(mp.count) transactions")
+        }
+        print("Connecting node to network...".dim())
+        fflush(stdout)
+        node = Node(type: type, blockchain: state.blockchain, mempool: state.mempool)
+        class Delegate: NodeDelegate {
+            let initialSyncCompleteClosure: () -> Void
+            
+            init(initialSyncCompleteClosure closure: @escaping () -> Void) {
+                initialSyncCompleteClosure = closure
+            }
+            
+            func nodeDidConnectToNetwork(_ node: Node) {
+                print("🚦 Connected".green())
+                initialSyncCompleteClosure()
+            }
+            func node(_ node: Node, didAddPeer: NodeAddress) {
+                print("← ".blue() + "\(didAddPeer.urlString) connected".dim())
+            }
+            func node(_ node: Node, didCreateTransactions transactions: [Transaction]) {
+                print("✔ ".blue() + "Transaction created")
+            }
+            func node(_ node: Node, didSendTransactions transactions: [Transaction]) {
+                print("→ ".blue() + "Sent \(transactions.count) transactions".dim())
+            }
+            func node(_ node: Node, didReceiveTransactions transactions: [Transaction]) {
+                print("← ".blue() + "Received \(transactions.count) transactions".dim())
+            }
+            func node(_ node: Node, didCreateBlocks blocks: [Block]) {
+                print("🎉 Mined block! \(blocks.first!.hash.hex)")
+            }
+            func node(_ node: Node, didSendBlocks blocks: [Block]) {
+                print("→ ".blue() + "Sent \(blocks.count) blocks".dim())
+            }
+            func node(_ node: Node, didReceiveBlocks blocks: [Block]) {
+                print("← ".blue() + "Got \(blocks.count) blocks".dim())
+            }
+        }
+        let initialSyncGroup = DispatchGroup()
+        initialSyncGroup.enter()
+        node.delegate = Delegate() {
+            initialSyncGroup.leave()
+        }
+        DispatchQueue.global().async {
+            self.node.connect()
+        }
+        initialSyncGroup.wait()
+    }
+    
+    func getInput() -> String {
         let keyboard = FileHandle.standardInput
         let inputData = keyboard.availableData
         let strData = String(data: inputData, encoding: String.Encoding.utf8)!
         return strData.trimmingCharacters(in: CharacterSet.newlines)
     }
     
-    static func parseInput(_ args: [String]) {
+    func parseInput(_ args: [String]) {
         let cmds = args.compactMap { Command(rawValue: $0) }
         let subcmds = args.compactMap { WalletSubCommand(rawValue: $0) }
         let flags = args.compactMap { Flag(rawValue: $0) }
         guard let cmd = cmds.first else {
-            error("Unknown command")
+            printError("Unknown command")
             return
         }
         switch cmd {
@@ -155,7 +213,7 @@ class CLI {
                     if let validWalletAddress = Data(walletAddress: walletAddress) {
                         walletBalance(walletAddress: validWalletAddress)
                     } else {
-                        error("You must specify a valid wallet address!")
+                        printError("You must specify a valid wallet address!")
                     }
                 case .send:
                     let interactive = args.count < 5
@@ -167,16 +225,16 @@ class CLI {
                         return
                     } else {
                         guard let keys = Keygen.loadKeyPairFromKeychain(name: args[2]) else {
-                            error("Could not load wallet named \(args[2])")
+                            printError("Could not load wallet named \(args[2])")
                             return
                         }
                         let wallet = Wallet(name: args[2], keyPair: keys)
                         guard let toData = Data(walletAddress: args[3]) else {
-                            error("You must specify a valid recipient address")
+                            printError("You must specify a valid recipient address")
                             return
                         }
                         guard let valueInput = UInt64(args[4]) else {
-                            error("You must specify a valid value")
+                            printError("You must specify a valid value")
                             return
                         }
                         from = wallet
@@ -193,39 +251,27 @@ class CLI {
             if interactive { prompt("Enter wallet address: ".dim()) }
             let walletAddress = interactive ? getInput() : args[1]
             if let validWalletAddress = Data(walletAddress: walletAddress) {
-                runNode(type: .peer, minerAddress: validWalletAddress)
+                mine(minerAddress: validWalletAddress)
             } else {
-                error("You must specify a valid wallet address!")
-            }
-        case .central:
-            let interactive = args.count < 2
-            if interactive { prompt("Enter wallet address: ".dim()) }
-            let walletAddress = interactive ? getInput() : args[1]
-            if walletAddress.isEmpty {
-                runNode(type: .central, minerAddress: nil)
-            }
-            if let validWalletAddress = Data(walletAddress: walletAddress) {
-                runNode(type: .central, minerAddress: validWalletAddress)
-            } else {
-                error("You must specify a valid wallet address!")
+                printError("You must specify a valid wallet address!")
             }
         }
     }
 
-    static func printAvailableCommands() {
+    func printAvailableCommands() {
         print("  Available commands:")
         Command.allCases.forEach {
             printCommand($0)
         }
     }
     
-    static func printCommand(_ command: Command) {
+    func printCommand(_ command: Command) {
         for usage in command.usage {
             print("    \(String.prompt) \u{001B}[1m\(usage)\u{001B}[22m")
         }
     }
     
-    static func interactiveMode() {
+    func interactiveMode() {
         printAvailableCommands()
         while true {
             prompt(String.prompt.bold().green())
@@ -233,135 +279,72 @@ class CLI {
         }
     }
     
-    static func runNode(type: Node.NodeType, minerAddress: Data?) {
-        print("🏃🏻‍♂️ Running Node! (\(type.rawValue))")
-        let state = Node.loadState()
-        if let bc = state.blockchain {
-            print("⛓  Blockchain: \(bc.blocks.count) blocks, latest hash: \(bc.lastBlockHash().hex)")
-        }
-        if let mp = state.mempool {
-            print("🚰 Mempool: \(mp.count) transactions")
-        }
-        if let wa = minerAddress {
-            print("🛠  Mining with address: \(wa.hex)")
-        }
-        let node = Node(type: type, blockchain: state.blockchain, mempool: state.mempool)
-        while true {
-            if let minerAddress = minerAddress {
-                let block = node.mineBlock(minerAddress: minerAddress)
-                node.saveState()
-                print("🎉 Mined block → \(block.hash.hex)")
-            } else {
-                continue
+    func mine(minerAddress: Data) {
+        let minerGroup = DispatchGroup()
+        minerGroup.enter()
+        let queue = DispatchQueue(label: "mine", attributes: .concurrent)
+        queue.async {
+            while true {
+                let _ = self.node.mineBlock(minerAddress: minerAddress)
+                self.node.saveState()
             }
         }
+        minerGroup.wait()
     }
     
-    static func createWallet(named: String, keychain: Bool = false) {
+    func createWallet(named: String, keychain: Bool = false) {
         if let wallet = Wallet(name: named, storeInKeychain: keychain) {
             print("💳 Created wallet '\(named)'\(keychain ? " (stored in keychain)" : "")")
-            print("🔑 Public: \(wallet.publicKey.hex)")
-            print("🔐 Private: \(wallet.exportPrivateKey()!.hex)")
-            print("📥 Address: \(wallet.address.hex)")
+            print("  🔑 Public: \(wallet.publicKey.hex)")
+            print("  🔐 Private: \(wallet.exportPrivateKey()!.hex)")
+            print("  📥 Address: \(wallet.address.hex)")
         } else {
             print("Error: Could not create wallet!")
         }
     }
     
-    static func listWallets() {
-        error("Unsupported")
+    func listWallets() {
+        printError("Unsupported")
     }
     
-    static func walletBalance(walletAddress: Data) {
-        let state = Node.loadState()
-        if let blockchain = state.blockchain {
-            let balance = blockchain.balance(for: walletAddress)
-            print("💰 \(balance)")
-        } else {
-            error("Could not load local blockchain")
-        }
+    func walletBalance(walletAddress: Data) {
+        let balance = node.blockchain.balance(for: walletAddress)
+        print("💰 \(balance)")
     }
     
-    static func send(from: Wallet, to: Data, value: UInt64) {
-        class Delegate: NodeDelegate {
-            func nodeDidConnectToNetwork(_ node: Node) {
-                print("Synced".dim())
-                do {
-                    let _ = try node.createTransaction(sender: from, recipientAddress: to, value: value)
-                } catch Node.TxError.insufficientBalance {
-                    error("Insufficient balance")
-                    completion()
-                } catch Node.TxError.invalidValue {
-                    error("Invalid value")
-                    completion()
-                } catch Node.TxError.unverifiedTransaction {
-                    error("Unable to verify transaction")
-                    completion()
-                } catch Node.TxError.sourceEqualDestination {
-                    error("You can't send to yourself")
-                    completion()
-                } catch {
-                    completion()
-                }
-            }
-            func node(_ node: Node, didAddPeer: NodeAddress) {}
-            func node(_ node: Node, didCreateTransactions transactions: [Transaction]) {}
-            func node(_ node: Node, didSendTransactions transactions: [Transaction]) {
-                completion()
-            }
-            func node(_ node: Node, didReceiveTransactions transactions: [Transaction]) {}
-            func node(_ node: Node, didCreateBlocks blocks: [Block]) {}
-            func node(_ node: Node, didSendBlocks blocks: [Block]) {}
-            func node(_ node: Node, didReceiveBlocks blocks: [Block]) {}
-            
-            let completion: () -> Void
-            let from: Wallet
-            let to: Data
-            let value: UInt64
-            init(from: Wallet, to: Data, value: UInt64, completion: @escaping () -> Void) {
-                self.from = from
-                self.to = to
-                self.value = value
-                self.completion = completion
-            }
+    func send(from: Wallet, to: Data, value: UInt64) {
+        do {
+            let _ = try node.createTransaction(sender: from, recipientAddress: to, value: value)
+        } catch Node.TxError.insufficientBalance {
+            printError("Insufficient balance")
+        } catch Node.TxError.invalidValue {
+            printError("Invalid value")
+        } catch Node.TxError.unverifiedTransaction {
+            printError("Unable to verify transaction")
+        } catch Node.TxError.sourceEqualDestination {
+            printError("You can't send to yourself")
+        } catch {
+            printError("Unknown error")
         }
-        var done = false
-        let delegate = Delegate(from: from, to: to, value: value) {
-            done = true
-        }
-        let state = Node.loadState()
-        let node = Node(blockchain: state.blockchain, mempool: state.mempool)
-        node.delegate = delegate
-//        do {
-//            let _ = try node.createTransaction(sender: from, recipientAddress: to, value: value)
-//        } catch Node.TxError.insufficientBalance {
-//            error("Insufficient balance")
-//            done = true
-//        } catch Node.TxError.invalidValue {
-//            error("Invalid value")
-//            done = true
-//        } catch Node.TxError.unverifiedTransaction {
-//            error("Unable to verify transaction")
-//            done = true
-//        } catch Node.TxError.sourceEqualDestination {
-//            error("You can't send to yourself")
-//            done = true
-//        } catch {
-//            done = true
-//        }
+    }
+}
 
-        while !done {
-            continue
-        }
+func interceptSigint(_ handleSigint: @escaping () -> Void) {
+    signal(SIGINT, SIG_IGN) // // Make sure the signal does not terminate the application.
+    let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+    sigintSrc.setEventHandler {
+        print("Got SIGINT")
+        handleSigint()
     }
+    sigintSrc.resume()
+    dispatchMain()
 }
 
 func run() {
-    if CommandLine.argc == 1 {
-        CLI.interactiveMode()
-    } else {
-        CLI.parseInput(Array(CommandLine.arguments.dropFirst()))
-    }
+    let type: Node.NodeType = CommandLine.argc == 2 && CLI.Flag(rawValue: CommandLine.arguments[1]) != nil ? .central : .peer
+    let cli = CLI(type: type)
+    cli.interactiveMode()
 }
 
 run()
+
