@@ -1,50 +1,21 @@
+//
+//  CLI.swift
+//  BlockchainSwift
+//
+//  Created by Magnus Nevstad on 22/05/2019.
+//
+
 import Foundation
 import BlockchainSwift
 
-func prompt(_ prompt: String) {
-    print(prompt, terminator: "")
-    fflush(stdout)
-}
-
-func printError(_ error: String) {
-    print("Error: ".red() + error)
-}
-
-extension String {
-    func bold() -> String {
-        return "\u{001B}[1m\(self)\u{001B}[22m"
+func interceptSigint(_ handleSigint: @escaping () -> Void) {
+    signal(SIGINT, SIG_IGN) // // Make sure the signal does not terminate the application.
+    let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+    sigintSrc.setEventHandler {
+        print("Got SIGINT")
+        handleSigint()
     }
-    
-    func underline() -> String {
-        return "\u{001B}[4m\(self)\u{001B}[24m"
-    }
-    
-    func green() -> String {
-        return "\u{001B}[32m\(self)\u{001B}[0m"
-    }
-    
-    func red() -> String {
-        return "\u{001B}[31m\(self)\u{001B}[0m"
-    }
-    
-    func blue() -> String {
-        return "\u{001B}[34m\(self)\u{001B}[0m"
-    }
-    func dim() -> String {
-        return "\u{001B}[2m\(self)\u{001B}[22m"
-    }
-    
-    static var prompt: String { return "> " }
-}
-
-extension Data {
-    init?(walletAddress: String) {
-        if let data = Data(hex: walletAddress), data.count == 32 {
-            self = data
-        } else {
-            return nil
-        }
-    }
+    sigintSrc.resume()
 }
 
 class CLI {
@@ -57,11 +28,11 @@ class CLI {
         var usage: [String] {
             switch self {
             case .wallet:
-                return WalletSubCommand.allCases.map { "\(rawValue.bold()) \($0.usage) \($0.info.dim())" }
+                return WalletSubCommand.allCases.map { "\(rawValue.bold) \($0.usage) \($0.info.dim)" }
             case .mine:
-                return ["\(rawValue.bold()) [wallet address] \(info.dim())"]
+                return ["\(rawValue.bold) [wallet address] \(info.dim)"]
             default:
-                return [rawValue.bold()]
+                return [rawValue.bold]
             }
         }
         
@@ -86,13 +57,13 @@ class CLI {
         var usage: String {
             switch self {
             case .create:
-                return "\(rawValue.underline()) [wallet name] <--keychain|-kc>"
+                return "\(rawValue.underline) [wallet name] <--keychain|-kc>"
             case .list:
-                return "\(rawValue.underline())"
+                return "\(rawValue.underline)"
             case .balance:
-                return "\(rawValue.underline()) [wallet address]"
+                return "\(rawValue.underline) [wallet address]"
             case .send:
-                return "\(rawValue.underline()) [wallet name] [to address] [value]"
+                return "\(rawValue.underline) [wallet name] [to address] [value]"
             }
         }
         
@@ -108,18 +79,19 @@ class CLI {
                 return "- Send coins to another address."
             }
         }
-
+        
     }
-
+    
     enum Flag: String {
         case keychain = "-kc"
         case keychainLong = "--keychain"
         case central = "--central"
     }
-
+    
     let node: Node
     
-    init(type: Node.NodeType) {
+    init(runAsCentralNode: Bool) {
+        let type: Node.NodeType = runAsCentralNode ? .central : .peer
         print("🏃🏻‍♂️ Running Node! (\(type.rawValue))")
         let state = Node.loadState()
         if let bc = state.blockchain {
@@ -128,7 +100,7 @@ class CLI {
         if let mp = state.mempool {
             print("🚰 Mempool: \(mp.count) transactions")
         }
-        print("Connecting node to network...".dim())
+        print("Connecting node to network...".dim)
         fflush(stdout)
         node = Node(type: type, blockchain: state.blockchain, mempool: state.mempool)
         class Delegate: NodeDelegate {
@@ -139,29 +111,29 @@ class CLI {
             }
             
             func nodeDidConnectToNetwork(_ node: Node) {
-                print("🚦 Connected".green())
+                print("🚦 Connected".green)
                 initialSyncCompleteClosure()
             }
             func node(_ node: Node, didAddPeer: NodeAddress) {
-                print("← ".blue() + "\(didAddPeer.urlString) connected".dim())
+                print("← ".blue + "\(didAddPeer.urlString) connected".dim)
             }
             func node(_ node: Node, didCreateTransactions transactions: [Transaction]) {
-                print("✔ ".blue() + "Transaction created")
+                print("✔ ".blue + "Transaction created")
             }
             func node(_ node: Node, didSendTransactions transactions: [Transaction]) {
-                print("→ ".blue() + "Sent \(transactions.count) transactions".dim())
+                print("→ ".blue + "Sent \(transactions.count) transactions".dim)
             }
             func node(_ node: Node, didReceiveTransactions transactions: [Transaction]) {
-                print("← ".blue() + "Received \(transactions.count) transactions".dim())
+                print("← ".blue + "Received \(transactions.count) transactions".dim)
             }
             func node(_ node: Node, didCreateBlocks blocks: [Block]) {
                 print("🎉 Mined block! \(blocks.first!.hash.hex)")
             }
             func node(_ node: Node, didSendBlocks blocks: [Block]) {
-                print("→ ".blue() + "Sent \(blocks.count) blocks".dim())
+                print("→ ".blue + "Sent \(blocks.count) blocks".dim)
             }
             func node(_ node: Node, didReceiveBlocks blocks: [Block]) {
-                print("← ".blue() + "Got \(blocks.count) blocks".dim())
+                print("← ".blue + "Got \(blocks.count) blocks".dim)
             }
         }
         let initialSyncGroup = DispatchGroup()
@@ -201,14 +173,14 @@ class CLI {
                 switch subcmds[0] {
                 case .create:
                     let interactive = args.count < 3
-                    if interactive { prompt("Enter wallet name: ".dim()) }
+                    if interactive { prompt("Enter wallet name: ".dim) }
                     let name = interactive ? getInput() : args[2]
                     createWallet(named: name, keychain: flags.contains(.keychain) || flags.contains(.keychainLong))
                 case .list:
                     listWallets()
                 case .balance:
                     let interactive = args.count < 3
-                    if interactive { prompt("Enter wallet address: ".dim()) }
+                    if interactive { prompt("Enter wallet address: ".dim) }
                     let walletAddress = interactive ? getInput() : args[2]
                     if let validWalletAddress = Data(walletAddress: walletAddress) {
                         walletBalance(walletAddress: validWalletAddress)
@@ -248,7 +220,7 @@ class CLI {
             }
         case .mine:
             let interactive = args.count < 2
-            if interactive { prompt("Enter wallet address: ".dim()) }
+            if interactive { prompt("Enter wallet address: ".dim) }
             let walletAddress = interactive ? getInput() : args[1]
             if let validWalletAddress = Data(walletAddress: walletAddress) {
                 mine(minerAddress: validWalletAddress)
@@ -256,6 +228,15 @@ class CLI {
                 printError("You must specify a valid wallet address!")
             }
         }
+    }
+    
+    func prompt(_ prompt: String) {
+        print(prompt, terminator: "")
+        fflush(stdout)
+    }
+    
+    func printError(_ error: String) {
+        print("Error: ".red + error)
     }
 
     func printAvailableCommands() {
@@ -267,14 +248,15 @@ class CLI {
     
     func printCommand(_ command: Command) {
         for usage in command.usage {
-            print("    \(String.prompt) \u{001B}[1m\(usage)\u{001B}[22m")
+            print("    \(String.prompt) \(usage.underline)")
         }
     }
     
     func interactiveMode() {
         printAvailableCommands()
         while true {
-            prompt(String.prompt.bold().green())
+            prompt(String.prompt.bold
+                .green)
             parseInput(getInput().components(separatedBy: " "))
         }
     }
@@ -283,6 +265,7 @@ class CLI {
         let minerGroup = DispatchGroup()
         minerGroup.enter()
         let queue = DispatchQueue(label: "mine", attributes: .concurrent)
+
         queue.async {
             while true {
                 let _ = self.node.mineBlock(minerAddress: minerAddress)
@@ -299,7 +282,7 @@ class CLI {
             print("  🔐 Private: \(wallet.exportPrivateKey()!.hex)")
             print("  📥 Address: \(wallet.address.hex)")
         } else {
-            print("Error: Could not create wallet!")
+            printError("Could not create wallet!")
         }
     }
     
@@ -328,23 +311,3 @@ class CLI {
         }
     }
 }
-
-func interceptSigint(_ handleSigint: @escaping () -> Void) {
-    signal(SIGINT, SIG_IGN) // // Make sure the signal does not terminate the application.
-    let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-    sigintSrc.setEventHandler {
-        print("Got SIGINT")
-        handleSigint()
-    }
-    sigintSrc.resume()
-    dispatchMain()
-}
-
-func run() {
-    let type: Node.NodeType = CommandLine.argc == 2 && CLI.Flag(rawValue: CommandLine.arguments[1]) != nil ? .central : .peer
-    let cli = CLI(type: type)
-    cli.interactiveMode()
-}
-
-run()
-

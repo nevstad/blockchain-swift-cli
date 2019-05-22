@@ -1,3 +1,3 @@
-# blockchain-cli
+# ⛓  A simple Blockchain implementation CLI.
 
-A description of this package.
+See [BlockchainSwift](https://github.com/nevstad/blockchain-swift) for Blockchain implementation.
