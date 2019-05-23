@@ -43,3 +43,17 @@ extension String {
     
     static var prompt: String { return "> " }
 }
+
+extension String {
+    var isYes: Bool {
+        return self == "yes" || self == "y"
+    }
+
+    var isNo: Bool {
+        return self == "no" || self == "n"
+    }
+    
+    var isYesOrNo: Bool {
+        return isYes || isNo
+    }
+}

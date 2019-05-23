@@ -18,81 +18,82 @@ func interceptSigint(_ handleSigint: @escaping () -> Void) {
     sigintSrc.resume()
 }
 
+enum Command: String, CaseIterable {
+    case wallet
+    case mine
+    case help
+    case exit
+    
+    var usage: [String] {
+        switch self {
+        case .wallet:
+            return WalletSubCommand.allCases.map { "\(rawValue.bold) \($0.usage) \($0.info.dim)" }
+        case .mine:
+            return ["\(rawValue.bold) [wallet address] \(info.dim)"]
+        default:
+            return [rawValue.bold]
+        }
+    }
+    
+    var info: String {
+        switch self {
+        case .wallet:
+            return "- Create or list wallets stored in keychain."
+        case .mine:
+            return "- Start minig blocks. Requires a wallet address, for block rewards."
+        default:
+            return ""
+        }
+    }
+}
+
+enum WalletSubCommand: String, CaseIterable {
+    case create
+    case delete
+    case list
+    case balance
+    case send
+    
+    var usage: String {
+        switch self {
+        case .create:
+            return "\(rawValue.underline) [wallet name] <--keychain|-kc>"
+        case .delete:
+            return "\(rawValue.underline) [wallet name]"
+        case .list:
+            return "\(rawValue.underline)"
+        case .balance:
+            return "\(rawValue.underline) [wallet address]"
+        case .send:
+            return "\(rawValue.underline) [wallet name] [to address] [value]"
+        }
+    }
+    
+    var info: String {
+        switch self {
+        case .create:
+            return "- Create a wallet, optionally stored in keychain."
+        case .delete:
+            return "- Delete a wallet from the keychain."
+        case .list:
+            return "- List all wallets stored in keychain."
+        case .balance:
+            return "- Show wallet balance."
+        case .send:
+            return "- Send coins to another address."
+        }
+    }
+    
+}
+
+enum Flag: String {
+    case keychain = "-kc"
+    case keychainLong = "--keychain"
+    case central = "--central"
+}
+
+
 class CLI {
-    enum Command: String, CaseIterable {
-        case wallet
-        case mine
-        case help
-        case exit
-        
-        var usage: [String] {
-            switch self {
-            case .wallet:
-                return WalletSubCommand.allCases.map { "\(rawValue.bold) \($0.usage) \($0.info.dim)" }
-            case .mine:
-                return ["\(rawValue.bold) [wallet address] \(info.dim)"]
-            default:
-                return [rawValue.bold]
-            }
-        }
-        
-        var info: String {
-            switch self {
-            case .wallet:
-                return "- Create or list wallets stored in keychain."
-            case .mine:
-                return "- Start minig blocks. Requires a wallet address, for block rewards."
-            default:
-                return ""
-            }
-        }
-    }
-    
-    enum WalletSubCommand: String, CaseIterable {
-        case create
-        case delete
-        case list
-        case balance
-        case send
-        
-        var usage: String {
-            switch self {
-            case .create:
-                return "\(rawValue.underline) [wallet name] <--keychain|-kc>"
-            case .delete:
-                return "\(rawValue.underline) [wallet name]"
-            case .list:
-                return "\(rawValue.underline)"
-            case .balance:
-                return "\(rawValue.underline) [wallet address]"
-            case .send:
-                return "\(rawValue.underline) [wallet name] [to address] [value]"
-            }
-        }
-        
-        var info: String {
-            switch self {
-            case .create:
-                return "- Create a wallet, optionally stored in keychain."
-            case .delete:
-                return "- Delete a wallet from the keychain."
-            case .list:
-                return "- List all wallets stored in keychain."
-            case .balance:
-                return "- Show wallet balance."
-            case .send:
-                return "- Send coins to another address."
-            }
-        }
-        
-    }
-    
-    enum Flag: String {
-        case keychain = "-kc"
-        case keychainLong = "--keychain"
-        case central = "--central"
-    }
-    
     let node: Node
     
     init(runAsCentralNode: Bool) {
@@ -152,11 +153,46 @@ class CLI {
         initialSyncGroup.wait()
     }
     
-    func getInput() -> String {
-        let keyboard = FileHandle.standardInput
-        let inputData = keyboard.availableData
-        let strData = String(data: inputData, encoding: String.Encoding.utf8)!
-        return strData.trimmingCharacters(in: CharacterSet.newlines)
+    func interactiveMode() {
+        printAvailableCommands()
+        while true {
+            let args = getInput(prompt: String.prompt.bold.green).components(separatedBy: " ")
+            parseInput(args)
+        }
+    }
+    
+    func printError(_ error: String) {
+        print("Error: ".red + error)
+    }
+    
+    func printCommand(_ command: Command) {
+        for usage in command.usage {
+            print("    \(String.prompt) \(usage)")
+        }
+    }
+    
+    func printAvailableCommands() {
+        print("  Available commands:")
+        Command.allCases.forEach {
+            printCommand($0)
+        }
+    }
+
+    func getInput(prompt: String? = nil) -> String {
+        if let prompt = prompt {
+            print(prompt, terminator: "")
+            fflush(stdout)
+        }
+        let inputData = FileHandle.standardInput.availableData
+        return String(data: inputData, encoding: .utf8)!.trimmingCharacters(in: .newlines)
+    }
+    
+    func getConfirmationInput(prompt: String) -> Bool {
+        var confirmed = getInput(prompt: prompt)
+        while !confirmed.isYesOrNo {
+            confirmed = getInput(prompt: "Please enter 'y' or 'n': ".dim)
+        }
+        return confirmed.isYes
     }
     
     func parseInput(_ args: [String]) {
@@ -177,97 +213,52 @@ class CLI {
             if subcmds.count > 0 {
                 switch subcmds[0] {
                 case .create:
-                    let interactive = args.count < 3
-                    if interactive { prompt("Enter wallet name: ".dim) }
-                    let name = interactive ? getInput() : args[2]
+                    let name = args.count < 3 ? getInput(prompt: "Enter wallet name: ".dim) : args[2]
                     createWallet(named: name, keychain: flags.contains(.keychain) || flags.contains(.keychainLong))
                 case .delete:
-                    let interactive = args.count < 3
-                    if interactive { prompt("Enter wallet name: ".dim) }
-                    let name = interactive ? getInput() : args[2]
-                    deleteWallet(named: name)
+                    let name = args.count < 3 ? getInput(prompt: "Enter wallet name: ".dim) : args[2]
+                    let confirmPrompt = "Are you sure you want to delete '\(name)'? [".dim + "y".green + "/".dim + "n".red + "]: ".dim
+                    if getConfirmationInput(prompt: confirmPrompt) {
+                        deleteWallet(named: name)
+                    }
                 case .list:
                     listWallets()
                 case .balance:
-                    let interactive = args.count < 3
-                    if interactive { prompt("Enter wallet address: ".dim) }
-                    let walletAddress = interactive ? getInput() : args[2]
+                    let walletAddress = args.count < 3 ? getInput(prompt: "Enter wallet address: ".dim) : args[2]
                     if let validWalletAddress = Data(walletAddress: walletAddress) {
                         walletBalance(walletAddress: validWalletAddress)
                     } else {
                         printError("You must specify a valid wallet address!")
                     }
                 case .send:
-                    let interactive = args.count < 5
-                    var from: Wallet?
-                    var to = Data()
-                    var value: UInt64 = 0
-                    if interactive {
-                        printCommand(cmd)
+                    let walletName = args.count < 3 ? getInput(prompt: "Enter wallet name: ".dim) : args[2]
+                    guard let keys = Keygen.loadKeyPairFromKeychain(name: walletName) else {
+                        printError("Could not load wallet named \(walletName)")
                         return
-                    } else {
-                        guard let keys = Keygen.loadKeyPairFromKeychain(name: args[2]) else {
-                            printError("Could not load wallet named \(args[2])")
-                            return
-                        }
-                        let wallet = Wallet(name: args[2], keyPair: keys)
-                        guard let toData = Data(walletAddress: args[3]) else {
-                            printError("You must specify a valid recipient address")
-                            return
-                        }
-                        guard let valueInput = UInt64(args[4]) else {
-                            printError("You must specify a valid value")
-                            return
-                        }
-                        from = wallet
-                        to = toData
-                        value = valueInput
                     }
-                    send(from: from!, to: to, value: value)
+                    let wallet = Wallet(name: walletName, keyPair: keys)
+                    let recipientAddress = args.count < 4 ? getInput(prompt: "Enter recipient address: ".dim) : args[3]
+                    guard let recipient = Data(walletAddress: recipientAddress) else {
+                        printError("You must specify a valid recipient address")
+                        return
+                    }
+                    let valueString = args.count < 5 ? getInput(prompt: "Enter value to send: ".dim) : args[4]
+                    guard let value = UInt64(valueString) else {
+                        printError("You must specify a valid value")
+                        return
+                    }
+                    send(from: wallet, to: recipient, value: value)
                 }
             } else {
                 printCommand(cmd)
             }
         case .mine:
-            let interactive = args.count < 2
-            if interactive { prompt("Enter wallet address: ".dim) }
-            let walletAddress = interactive ? getInput() : args[1]
+            let walletAddress = args.count < 2 ? getInput(prompt: "Enter wallet address: ".dim) : args[1]
             if let validWalletAddress = Data(walletAddress: walletAddress) {
                 mine(minerAddress: validWalletAddress)
             } else {
                 printError("You must specify a valid wallet address!")
             }
-        }
-    }
-    
-    func prompt(_ prompt: String) {
-        print(prompt, terminator: "")
-        fflush(stdout)
-    }
-    
-    func printError(_ error: String) {
-        print("Error: ".red + error)
-    }
-
-    func printAvailableCommands() {
-        print("  Available commands:")
-        Command.allCases.forEach {
-            printCommand($0)
-        }
-    }
-    
-    func printCommand(_ command: Command) {
-        for usage in command.usage {
-            print("    \(String.prompt) \(usage)")
-        }
-    }
-    
-    func interactiveMode() {
-        printAvailableCommands()
-        while true {
-            prompt(String.prompt.bold
-                .green)
-            parseInput(getInput().components(separatedBy: " "))
         }
     }
     
