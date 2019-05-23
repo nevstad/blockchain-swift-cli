@@ -40,7 +40,7 @@ enum Command: String, CaseIterable {
         case .wallet:
             return "- Create or list wallets stored in keychain."
         case .mine:
-            return "- Start minig blocks. Requires a wallet address, for block rewards."
+            return "- Start mining blocks. Requires a wallet address, for block rewards."
         default:
             return ""
         }
@@ -294,10 +294,19 @@ class CLI {
             printError("Unable to delete wallet '\(name)'")
         }
     }
-
     
     func listWallets() {
-        printError("Unsupported")
+        let walletNames = Keygen.avalaibleKeyPairsNames()
+        let wallets = walletNames.map { Wallet(name: $0, keyPair: Keygen.loadKeyPairFromKeychain(name: $0)!) }
+        if !wallets.isEmpty {
+            print("💳 Available wallets:")
+            for wallet in wallets {
+                print("  '\(wallet.name)' " + "- Address: \(wallet.address.hex)".dim)
+            }
+        } else {
+            print("You have no wallets in the keychain")
+        }
+        print()
     }
     
     func walletBalance(walletAddress: Data) {
