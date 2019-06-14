@@ -90,6 +90,8 @@ enum Flag: String {
     case keychain = "-kc"
     case keychainLong = "--keychain"
     case central = "--central"
+    case multiple = "-m"
+    case multipleLong = "--multiple"
 }
 
 
@@ -120,8 +122,11 @@ class CLI {
                 print("🚦 Connected".green)
                 initialSyncCompleteClosure()
             }
-            func node(_ node: Node, didAddPeer: NodeAddress) {
-                print("← ".blue + "\(didAddPeer.urlString) connected".dim)
+            func node(_ node: Node, didAddPeer peer: NodeAddress) {
+                print("← ".blue + "\(peer.urlString) connected".dim)
+            }
+            func node(_ node: Node, didRemovePeer peer: NodeAddress) {
+                print("→ ".red + "\(peer.urlString) disconnected".dim)
             }
             func node(_ node: Node, didCreateTransactions transactions: [Transaction]) {
                 print("✔ ".blue + "Transaction created")
@@ -255,23 +260,36 @@ class CLI {
         case .mine:
             let walletAddress = args.count < 2 ? getInput(prompt: "Enter wallet address: ".dim) : args[1]
             if let validWalletAddress = Data(walletAddress: walletAddress) {
-                mine(minerAddress: validWalletAddress)
+                var num = 1
+                if flags.contains(.multiple) || flags.contains(.multipleLong) {
+                    let numStr = args.count < 4 ? getInput(prompt: "How many block to mine: ".dim) : args[3]
+                    num = Int(numStr) ?? num
+                }
+                mine(minerAddress: validWalletAddress, num: num)
             } else {
                 printError("You must specify a valid wallet address!")
             }
         }
     }
     
-    func mine(minerAddress: Data) {
+    func mine(minerAddress: Data, num: Int = 1) {
+        func doMine() {
+            do {
+                try self.node.mineBlock(minerAddress: minerAddress)
+                self.node.saveState()
+            } catch {
+                printError("Someone else mined this block")
+            }
+        }
+
+        let queue = DispatchQueue(label: "mine", attributes: .concurrent)
         let minerGroup = DispatchGroup()
         minerGroup.enter()
-        let queue = DispatchQueue(label: "mine", attributes: .concurrent)
-
         queue.async {
-            while true {
-                let _ = self.node.mineBlock(minerAddress: minerAddress)
-                self.node.saveState()
+            for _ in 1...num {
+                doMine()
             }
+            minerGroup.leave()
         }
         minerGroup.wait()
     }
