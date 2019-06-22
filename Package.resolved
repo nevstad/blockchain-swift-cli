@@ -5,9 +5,27 @@
         "package": "BlockchainSwift",
         "repositoryURL": "https://github.com/nevstad/blockchain-swift.git",
         "state": {
-          "branch": "feature/nio",
-          "revision": "5a408bcc9f879563aa1653827116516e4fee6de1",
+          "branch": "feature/database",
+          "revision": "dbbb259051c7ea59e8310326d876c47fcba38bd3",
           "version": null
+        }
+      },
+      {
+        "package": "CSQLite",
+        "repositoryURL": "https://github.com/groue/CSQLite.git",
+        "state": {
+          "branch": null,
+          "revision": "3a405d0ebd8bf07d4c41a8b05a203e4d03415b5b",
+          "version": "0.3.0"
+        }
+      },
+      {
+        "package": "GRDB",
+        "repositoryURL": "https://github.com/groue/GRDB.swift.git",
+        "state": {
+          "branch": null,
+          "revision": "d290102d9cb5c425fee7260034beaa997d581d86",
+          "version": "4.1.1"
         }
       },
       {
@@ -15,8 +33,8 @@
         "repositoryURL": "https://github.com/apple/swift-nio.git",
         "state": {
           "branch": null,
-          "revision": "ed50f8a41ece8db20afa8d1188fc0960f95263df",
-          "version": "2.2.0"
+          "revision": "7f20464df31e85f86bedf4a8afdd1785e0cb5059",
+          "version": "2.3.0"
         }
       }
     ]

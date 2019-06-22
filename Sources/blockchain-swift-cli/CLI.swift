@@ -23,6 +23,7 @@ enum Command: String, CaseIterable {
     case mine
     case help
     case exit
+    case peers
     
     var usage: [String] {
         switch self {
@@ -41,6 +42,8 @@ enum Command: String, CaseIterable {
             return "- Create or list wallets stored in keychain."
         case .mine:
             return "- Start mining blocks. Requires a wallet address, for block rewards."
+        case .peers:
+            return "- List all known peers in the network."
         default:
             return ""
         }
@@ -100,17 +103,16 @@ class CLI {
     
     init(runAsCentralNode: Bool) {
         let type: Node.NodeType = runAsCentralNode ? .central : .peer
+        let dbDirectoryPath = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("BlockchainSwift")
+        let dbFilePath = dbDirectoryPath.appendingPathComponent("blockchain.sqlite")
+        try! FileManager.default.createDirectory(at: dbDirectoryPath, withIntermediateDirectories: true)
         print("🏃🏻‍♂️ Running Node! (\(type.rawValue))")
-        let state = Node.loadState()
-        if let bc = state.blockchain {
-            print("⛓  Blockchain: \(bc.blocks.count) blocks, latest hash: \(bc.lastBlockHash().hex)")
-        }
-        if let mp = state.mempool {
-            print("🚰 Mempool: \(mp.count) transactions")
-        }
         print("Connecting node to network...".dim)
         fflush(stdout)
-        node = Node(type: type, blockchain: state.blockchain, mempool: state.mempool)
+        node = Node(type: type, blockStore: SQLiteBlockStore(path: dbFilePath))
+        print("⛓  Blockchain: \(node.blockchain.currentBlockHeight()) blocks, latest hash: \(node.blockchain.latestBlockHash().hex)")
+        print("🚰 Mempool: \(node.blockchain.mempool().count) transactions")
+
         class Delegate: NodeDelegate {
             let initialSyncCompleteClosure: () -> Void
             
@@ -126,7 +128,7 @@ class CLI {
                 print("← ".blue + "\(peer.urlString) connected".dim)
             }
             func node(_ node: Node, didRemovePeer peer: NodeAddress) {
-                print("→ ".red + "\(peer.urlString) disconnected".dim)
+                print("𝗑 ".red + "\(peer.urlString) disconnected".dim)
             }
             func node(_ node: Node, didCreateTransactions transactions: [Transaction]) {
                 print("✔ ".blue + "Transaction created")
@@ -269,6 +271,8 @@ class CLI {
             } else {
                 printError("You must specify a valid wallet address!")
             }
+        case .peers:
+            listPeers()
         }
     }
     
@@ -276,7 +280,6 @@ class CLI {
         func doMine() {
             do {
                 try self.node.mineBlock(minerAddress: minerAddress)
-                self.node.saveState()
             } catch {
                 printError("Someone else mined this block")
             }
@@ -345,6 +348,13 @@ class CLI {
             printError("You can't send to yourself")
         } catch {
             printError("Unknown error")
+        }
+    }
+    
+    func listPeers() {
+        print("🌐 Known peers:")
+        for peer in node.peers {
+            print("  \(peer.urlString)")
         }
     }
 }
