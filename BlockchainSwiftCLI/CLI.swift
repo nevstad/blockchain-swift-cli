@@ -1,6 +1,6 @@
 //
 //  CLI.swift
-//  BlockchainSwift
+//  BlockchainSwiftCLI
 //
 //  Created by Magnus Nevstad on 22/05/2019.
 //
@@ -112,7 +112,7 @@ class CLI {
         node = Node(type: type, blockStore: SQLiteBlockStore(path: dbFilePath))
         print("⛓  Blockchain: \(node.blockchain.currentBlockHeight()) blocks, latest hash: \(node.blockchain.latestBlockHash().hex)")
         print("🚰 Mempool: \(node.blockchain.mempool().count) transactions")
-
+        
         class Delegate: NodeDelegate {
             let initialSyncCompleteClosure: () -> Void
             
@@ -184,7 +184,7 @@ class CLI {
             printCommand($0)
         }
     }
-
+    
     func getInput(prompt: String? = nil) -> String {
         if let prompt = prompt {
             print(prompt, terminator: "")
@@ -284,7 +284,7 @@ class CLI {
                 printError("Someone else mined this block")
             }
         }
-
+        
         let queue = DispatchQueue(label: "mine", attributes: .concurrent)
         let minerGroup = DispatchGroup()
         minerGroup.enter()

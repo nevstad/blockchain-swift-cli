@@ -1,6 +1,6 @@
 //
 //  String+Terminal.swift
-//  BlockchainSwift
+//  BlockchainSwiftCLI
 //
 //  Created by Magnus Nevstad on 22/05/2019.
 //
@@ -48,7 +48,7 @@ extension String {
     var isYes: Bool {
         return self == "yes" || self == "y"
     }
-
+    
     var isNo: Bool {
         return self == "no" || self == "n"
     }
