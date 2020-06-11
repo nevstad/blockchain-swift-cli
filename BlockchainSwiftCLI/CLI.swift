@@ -8,98 +8,9 @@
 import Foundation
 import BlockchainSwift
 
-func interceptSigint(_ handleSigint: @escaping () -> Void) {
-    signal(SIGINT, SIG_IGN) // // Make sure the signal does not terminate the application.
-    let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-    sigintSrc.setEventHandler {
-        print("Got SIGINT")
-        handleSigint()
-    }
-    sigintSrc.resume()
-}
-
-enum Command: String, CaseIterable {
-    case wallet
-    case mine
-    case help
-    case exit
-    case peers
-    
-    var usage: [String] {
-        switch self {
-        case .wallet:
-            return WalletSubCommand.allCases.map { "\(rawValue.bold) \($0.usage) \($0.info.dim)" }
-        case .mine:
-            return ["\(rawValue.bold) [wallet address] \(info.dim)"]
-        default:
-            return [rawValue.bold]
-        }
-    }
-    
-    var info: String {
-        switch self {
-        case .wallet:
-            return "- Create or list wallets stored in keychain."
-        case .mine:
-            return "- Start mining blocks. Requires a wallet address, for block rewards."
-        case .peers:
-            return "- List all known peers in the network."
-        default:
-            return ""
-        }
-    }
-}
-
-enum WalletSubCommand: String, CaseIterable {
-    case create
-    case delete
-    case list
-    case balance
-    case send
-    
-    var usage: String {
-        switch self {
-        case .create:
-            return "\(rawValue.underline) [wallet name] <--keychain|-kc>"
-        case .delete:
-            return "\(rawValue.underline) [wallet name]"
-        case .list:
-            return "\(rawValue.underline)"
-        case .balance:
-            return "\(rawValue.underline) [wallet address]"
-        case .send:
-            return "\(rawValue.underline) [wallet name] [to address] [value]"
-        }
-    }
-    
-    var info: String {
-        switch self {
-        case .create:
-            return "- Create a wallet, optionally stored in keychain."
-        case .delete:
-            return "- Delete a wallet from the keychain."
-        case .list:
-            return "- List all wallets stored in keychain."
-        case .balance:
-            return "- Show wallet balance."
-        case .send:
-            return "- Send coins to another address."
-        }
-    }
-    
-}
-
-enum Flag: String {
-    case keychain = "-kc"
-    case keychainLong = "--keychain"
-    case central = "--central"
-    case multiple = "-m"
-    case multipleLong = "--multiple"
-}
-
 
 class CLI {
-    let node: Node
+    private let node: Node
     
     init(runAsCentralNode: Bool) {
         let type: Node.NodeType = runAsCentralNode ? .central : .peer
@@ -120,7 +31,7 @@ class CLI {
                 initialSyncCompleteClosure = closure
             }
             
-            func nodeDidConnectToNetwork(_ node: Node) {
+            func node(_ node: Node, didConnect success: Bool, error: Error?) {
                 print("🚦 Connected".green)
                 initialSyncCompleteClosure()
             }
@@ -160,7 +71,7 @@ class CLI {
         initialSyncGroup.wait()
     }
     
-    func interactiveMode() {
+    func run() {
         printAvailableCommands()
         while true {
             let args = getInput(prompt: String.prompt.bold.green).components(separatedBy: " ")
@@ -168,24 +79,24 @@ class CLI {
         }
     }
     
-    func printError(_ error: String) {
+    private func printError(_ error: String) {
         print("Error: ".red + error)
     }
     
-    func printCommand(_ command: Command) {
-        for usage in command.usage {
+    private func printCommand(_ command: Command) {
+        for usage in command.usage.components(separatedBy: "\n") {
             print("    \(String.prompt) \(usage)")
         }
     }
     
-    func printAvailableCommands() {
+    private func printAvailableCommands() {
         print("  Available commands:")
-        Command.allCases.forEach {
-            printCommand($0)
+        Command.allCases.filter{ $0.showInHelp }.forEach { command in
+            printCommand(command)
         }
     }
     
-    func getInput(prompt: String? = nil) -> String {
+    private func getInput(prompt: String? = nil) -> String {
         if let prompt = prompt {
             print(prompt, terminator: "")
             fflush(stdout)
@@ -194,7 +105,7 @@ class CLI {
         return String(data: inputData, encoding: .utf8)!.trimmingCharacters(in: .newlines)
     }
     
-    func getConfirmationInput(prompt: String) -> Bool {
+    private func getConfirmationInput(prompt: String) -> Bool {
         var confirmed = getInput(prompt: prompt)
         while !confirmed.isYesOrNo {
             confirmed = getInput(prompt: "Please enter 'y' or 'n': ".dim)
@@ -202,7 +113,7 @@ class CLI {
         return confirmed.isYes
     }
     
-    func parseInput(_ args: [String]) {
+    private func parseInput(_ args: [String]) {
         let cmds = args.compactMap { Command(rawValue: $0) }
         let subcmds = args.compactMap { WalletSubCommand(rawValue: $0) }
         let flags = args.compactMap { Flag(rawValue: $0) }
@@ -211,25 +122,59 @@ class CLI {
             return
         }
         switch cmd {
+        case .q: fallthrough
+        case .exit :
+            quit()
+        case .h: fallthrough
         case .help:
             printAvailableCommands()
-        case .exit :
-            print("👋🏻")
-            exit(0)
+        case .p: fallthrough
+        case .peers:
+            listPeers()
+        case .mp: fallthrough
+        case .mempool:
+            memPool()
+        case .m: fallthrough
+        case .mine:
+            let walletAddress = args.count < 2 ? getInput(prompt: "Enter wallet address: ".dim) : args[1]
+            if let validWalletAddress = Data(walletAddress: walletAddress) {
+                var num = 1
+                if flags.contains(.num) {
+                    let numStr = args.count < 4 ? getInput(prompt: "How many blocks to mine: ".dim) : args[3]
+                    num = Int(numStr) ?? num
+                }
+                mine(minerAddress: validWalletAddress, num: num)
+            } else {
+                printError("You must specify a valid wallet address!")
+            }
+        case .w: fallthrough
         case .wallet:
             if subcmds.count > 0 {
                 switch subcmds[0] {
+                case .c: fallthrough
                 case .create:
                     let name = args.count < 3 ? getInput(prompt: "Enter wallet name: ".dim) : args[2]
-                    createWallet(named: name, keychain: flags.contains(.keychain) || flags.contains(.keychainLong))
+                    createWallet(named: name, keychain: flags.contains(.keychain))
+                case .d: fallthrough
                 case .delete:
                     let name = args.count < 3 ? getInput(prompt: "Enter wallet name: ".dim) : args[2]
                     let confirmPrompt = "Are you sure you want to delete '\(name)'? [".dim + "y".green + "/".dim + "n".red + "]: ".dim
                     if getConfirmationInput(prompt: confirmPrompt) {
                         deleteWallet(named: name)
                     }
+                case .l: fallthrough
                 case .list:
                     listWallets()
+                case .e: fallthrough
+                case .export:
+                    let walletName = args.count < 3 ? getInput(prompt: "Enter wallet name: ".dim) : args[2]
+                    guard let keys = Keygen.loadKeyPairFromKeychain(name: walletName) else {
+                        printError("Could not load wallet named \(walletName)")
+                        return
+                    }
+                    let wallet = Wallet(name: walletName, keyPair: keys)
+                    exportWallet(wallet)
+                case .b: fallthrough
                 case .balance:
                     let walletAddress = args.count < 3 ? getInput(prompt: "Enter wallet address: ".dim) : args[2]
                     if let validWalletAddress = Data(walletAddress: walletAddress) {
@@ -237,6 +182,7 @@ class CLI {
                     } else {
                         printError("You must specify a valid wallet address!")
                     }
+                case .s: fallthrough
                 case .send:
                     let walletName = args.count < 3 ? getInput(prompt: "Enter wallet name: ".dim) : args[2]
                     guard let keys = Keygen.loadKeyPairFromKeychain(name: walletName) else {
@@ -255,28 +201,28 @@ class CLI {
                         return
                     }
                     send(from: wallet, to: recipient, value: value)
+                case .h: fallthrough
+                case .history:
+                    let walletName = args.count < 3 ? getInput(prompt: "Enter wallet name: ".dim) : args[2]
+                    guard let keys = Keygen.loadKeyPairFromKeychain(name: walletName) else {
+                        printError("Could not load wallet named \(walletName)")
+                        return
+                    }
+                    let wallet = Wallet(name: walletName, keyPair: keys)
+                    history(wallet: wallet)
                 }
             } else {
                 printCommand(cmd)
             }
-        case .mine:
-            let walletAddress = args.count < 2 ? getInput(prompt: "Enter wallet address: ".dim) : args[1]
-            if let validWalletAddress = Data(walletAddress: walletAddress) {
-                var num = 1
-                if flags.contains(.multiple) || flags.contains(.multipleLong) {
-                    let numStr = args.count < 4 ? getInput(prompt: "How many block to mine: ".dim) : args[3]
-                    num = Int(numStr) ?? num
-                }
-                mine(minerAddress: validWalletAddress, num: num)
-            } else {
-                printError("You must specify a valid wallet address!")
-            }
-        case .peers:
-            listPeers()
         }
     }
     
-    func mine(minerAddress: Data, num: Int = 1) {
+    private func quit() {
+        print("👋🏻")
+        exit(0)
+    }
+    
+    private func mine(minerAddress: Data, num: Int = 1) {
         func doMine() {
             do {
                 try self.node.mineBlock(minerAddress: minerAddress)
@@ -297,18 +243,20 @@ class CLI {
         minerGroup.wait()
     }
     
-    func createWallet(named: String, keychain: Bool = false) {
+    private func createWallet(named: String, keychain: Bool = false) {
         if let wallet = Wallet(name: named, storeInKeychain: keychain) {
             print("💳 Created wallet '\(named)'\(keychain ? " (stored in keychain)".dim : "")")
             print("  🔑 Public: \(wallet.publicKey.hex)".dim)
-            print("  🔐 Private: \(wallet.exportPrivateKey()!.hex)".dim)
+            if !keychain {
+                print("  🔐 Private: \(wallet.exportPrivateKey()!.hex)".dim)
+            }
             print("  📥 Address: \(wallet.address.hex)".dim)
         } else {
             printError("Could not create wallet!")
         }
     }
     
-    func deleteWallet(named name: String) {
+    private func deleteWallet(named name: String) {
         if Keygen.clearKeychainKeys(name: name) {
             print("💳 '\(name)' successfully deleted")
         } else {
@@ -316,9 +264,8 @@ class CLI {
         }
     }
     
-    func listWallets() {
-        let walletNames = Keygen.avalaibleKeyPairsNames()
-        let wallets = walletNames.map { Wallet(name: $0, keyPair: Keygen.loadKeyPairFromKeychain(name: $0)!) }
+    private func listWallets() {
+        let wallets = Keygen.avalaibleKeyPairsNames().compactMap { Wallet(name: $0) }
         if !wallets.isEmpty {
             print("💳 Available wallets:")
             for wallet in wallets {
@@ -330,12 +277,19 @@ class CLI {
         print()
     }
     
-    func walletBalance(walletAddress: Data) {
-        let balance = node.blockchain.balance(for: walletAddress)
+    private func exportWallet(_ wallet: Wallet) {
+        print("💳 Wallet '\(wallet.name)':")
+        print("  🔑 Public: \(wallet.publicKey.hex)".dim)
+        print("  🔐 Private: \(wallet.exportPrivateKey()!.hex)".red)
+        print("  📥 Address: \(wallet.address.hex)".dim)
+    }
+    
+    private func walletBalance(walletAddress: Data) {
+        let balance = node.blockchain.balance(address: walletAddress)
         print("💰 \(balance)")
     }
     
-    func send(from: Wallet, to: Data, value: UInt64) {
+    private func send(from: Wallet, to: Data, value: UInt64) {
         do {
             let _ = try node.createTransaction(sender: from, recipientAddress: to, value: value)
         } catch Node.TxError.insufficientBalance {
@@ -351,10 +305,39 @@ class CLI {
         }
     }
     
-    func listPeers() {
+    private func history(wallet: Wallet) {
+        let payments = node.blockchain.payments(publicKey: wallet.publicKey)
+        if payments.isEmpty {
+            print("💳 Wallet '\(wallet.name)' has no transaction history.")
+        } else {
+            print("💳 Wallet '\(wallet.name)' txs (\(payments.count)):")
+            for payment in payments {
+                if payment.from == wallet.address {
+                    print("  → ".red + payment.to.readableHex.dim + ": \(payment.value)" + (payment.pending ? " (pending)".dim : ""))
+                } else if payment.to == wallet.address {
+                    print("  ← ".green + payment.from.readableHex.dim + ": \(payment.value)" + (payment.pending ? " (pending)".dim : ""))
+                }
+            }
+        }
+    }
+    
+    private func listPeers() {
         print("🌐 Known peers:")
         for peer in node.peers {
             print("  \(peer.urlString)")
         }
     }
+    
+    private func memPool() {
+        let pool = node.blockchain.mempool()
+        if pool.isEmpty {
+            print("🚰 Mempool is empty.")
+        } else {
+            print("🚰 Mempool (\(pool.count)):")
+            for tx in pool {
+                print("  \(tx.txId)")
+            }
+        }
+    }
+
 }

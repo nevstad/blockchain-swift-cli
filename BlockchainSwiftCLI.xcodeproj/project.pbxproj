@@ -11,6 +11,7 @@
 		9701C29B22C3542600CAAAA1 /* BlockchainSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 9701C29A22C3542600CAAAA1 /* BlockchainSwift */; };
 		9701C29D22C354BC00CAAAA1 /* CLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9701C29C22C354BC00CAAAA1 /* CLI.swift */; };
 		9701C29F22C3555A00CAAAA1 /* String+terminal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9701C29E22C3555A00CAAAA1 /* String+terminal.swift */; };
+		97B4D3922488F0EB00FE6BA7 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B4D3912488F0EB00FE6BA7 /* Commands.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -30,6 +31,7 @@
 		9701C29222C353D900CAAAA1 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		9701C29C22C354BC00CAAAA1 /* CLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLI.swift; sourceTree = "<group>"; };
 		9701C29E22C3555A00CAAAA1 /* String+terminal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+terminal.swift"; sourceTree = "<group>"; };
+		97B4D3912488F0EB00FE6BA7 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -65,6 +67,7 @@
 			children = (
 				9701C29222C353D900CAAAA1 /* main.swift */,
 				9701C29C22C354BC00CAAAA1 /* CLI.swift */,
+				97B4D3912488F0EB00FE6BA7 /* Commands.swift */,
 				9701C29E22C3555A00CAAAA1 /* String+terminal.swift */,
 			);
 			path = BlockchainSwiftCLI;
@@ -100,7 +103,7 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 1100;
-				LastUpgradeCheck = 1100;
+				LastUpgradeCheck = 1150;
 				ORGANIZATIONNAME = "Magnus Nevstad";
 				TargetAttributes = {
 					9701C28E22C353D900CAAAA1 = {
@@ -137,6 +140,7 @@
 				9701C29D22C354BC00CAAAA1 /* CLI.swift in Sources */,
 				9701C29F22C3555A00CAAAA1 /* String+terminal.swift in Sources */,
 				9701C29322C353D900CAAAA1 /* main.swift in Sources */,
+				97B4D3922488F0EB00FE6BA7 /* Commands.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -259,6 +263,7 @@
 		9701C29722C353D900CAAAA1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 9Z544VH6DA;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -270,6 +275,7 @@
 		9701C29822C353D900CAAAA1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 9Z544VH6DA;
 				ENABLE_HARDENED_RUNTIME = YES;

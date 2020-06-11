@@ -46,11 +46,11 @@ extension String {
 
 extension String {
     var isYes: Bool {
-        return self == "yes" || self == "y"
+        return self.lowercased() == "yes" || self.lowercased() == "y"
     }
     
     var isNo: Bool {
-        return self == "no" || self == "n"
+        return self.lowercased() == "no" || self.lowercased() == "n"
     }
     
     var isYesOrNo: Bool {
